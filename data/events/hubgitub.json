@@ -1,0 +1,38 @@
+{
+  "events": [
+    {
+      "id": "evt_hubgitub_20260310130903_4e3h",
+      "type": "incident",
+      "timestamp": "2026-03-10T13:09:03Z",
+      "author": "hubgitub",
+      "data": {
+        "description": "API down",
+        "severity": "critical",
+        "deployment_id": null,
+        "resolved": true
+      }
+    },
+    {
+      "id": "evt_hubgitub_20260310131236_v3yk",
+      "type": "deployment",
+      "timestamp": "2026-03-10T13:12:36Z",
+      "author": "hubgitub",
+      "data": {
+        "environment": "production",
+        "version": "manual",
+        "commit_ids": [],
+        "method": "manual"
+      }
+    },
+    {
+      "id": "evt_hubgitub_20260310131309_su0p",
+      "type": "recovery",
+      "timestamp": "2026-03-10T13:13:09Z",
+      "author": "hubgitub",
+      "data": {
+        "incident_id": "evt_hubgitub_20260310130903_4e3h",
+        "mttr_minutes": 4
+      }
+    }
+  ]
+}
