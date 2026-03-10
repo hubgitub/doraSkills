@@ -140,6 +140,9 @@ Run `/dora-dashboard` to generate an interactive HTML page with:
 
 The dashboard is generated as a standalone HTML file at `data/dora-dashboard.html`.
 
+The dashboad looks like:
+![Dashboard SreenShot](./screenshot.jpg)
+
 ## Metrics Calculation
 
 - **Deployment Frequency**: count of deployments / 30 days
