@@ -1,25 +1,48 @@
 #!/usr/bin/env python3
-"""Generate an interactive HTML dashboard for DORA metrics."""
+"""Generate an interactive HTML dashboard for DORA metrics.
+
+Supports both:
+  - Single file mode: generate-dashboard.py <events.json> <output.html>
+  - Team mode (directory): generate-dashboard.py <events-dir/> <output.html>
+"""
 
 import json
 import sys
+import os
+import glob
 from datetime import datetime, timedelta, timezone
 from html import escape
 from statistics import median
 
+
 def load_events(path):
-    with open(path) as f:
-        return json.load(f).get("events", [])
+    """Load events from a single file or all files in a directory."""
+    all_events = []
+    if os.path.isdir(path):
+        for f in glob.glob(os.path.join(path, "*.json")):
+            try:
+                with open(f) as fh:
+                    all_events.extend(json.load(fh).get("events", []))
+            except (json.JSONDecodeError, KeyError):
+                pass
+    else:
+        with open(path) as f:
+            all_events = json.load(f).get("events", [])
+    # Sort by timestamp
+    all_events.sort(key=lambda e: e.get("timestamp", ""))
+    return all_events
+
 
 def parse_ts(ts):
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
 
 def filter_last_n_days(events, days=30):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return [e for e in events if parse_ts(e["timestamp"]) >= cutoff]
 
+
 def calc_metrics(events):
-    now = datetime.now(timezone.utc)
     recent = filter_last_n_days(events, 30)
 
     deployments = [e for e in recent if e["type"] == "deployment"]
@@ -109,12 +132,28 @@ def calc_metrics(events):
         "total_recoveries": len(recoveries),
     }
 
+
+def calc_team_stats(events):
+    """Calculate per-author contribution stats over the last 30 days."""
+    recent = filter_last_n_days(events, 30)
+    authors = {}
+    for e in recent:
+        author = e.get("author", e.get("data", {}).get("author", "unknown"))
+        if author not in authors:
+            authors[author] = {"commits": 0, "deployments": 0, "incidents": 0, "recoveries": 0}
+        t = e["type"]
+        if t in authors[author]:
+            authors[author][t] += 1
+        elif t == "commit":
+            authors[author]["commits"] += 1
+    return authors
+
+
 def weekly_deployments(events):
     now = datetime.now(timezone.utc)
     weeks = {}
     for i in range(12):
         start = now - timedelta(weeks=12-i)
-        end = now - timedelta(weeks=11-i)
         label = start.strftime("%m/%d")
         weeks[label] = 0
     for e in events:
@@ -130,6 +169,7 @@ def weekly_deployments(events):
                 break
     return weeks
 
+
 def format_duration(minutes):
     if minutes < 60:
         return f"{minutes:.0f}m"
@@ -139,19 +179,30 @@ def format_duration(minutes):
     days = hours / 24
     return f"{days:.1f}d"
 
+
 def class_color(cls):
     return {"Elite": "#10b981", "High": "#3b82f6", "Medium": "#f59e0b", "Low": "#ef4444", "N/A": "#6b7280"}.get(cls, "#6b7280")
 
-def generate_html(events, metrics):
+
+def generate_html(events, metrics, team_stats):
     weeks = weekly_deployments(events)
     week_labels = json.dumps(list(weeks.keys()))
     week_values = json.dumps(list(weeks.values()))
 
+    # Team table rows
+    team_html = ""
+    if team_stats:
+        for author, stats in sorted(team_stats.items(), key=lambda x: sum(x[1].values()), reverse=True):
+            total = sum(stats.values())
+            team_html += f'<tr><td>{escape(author)}</td><td>{stats["commits"]}</td><td>{stats["deployments"]}</td><td>{stats["incidents"]}</td><td>{stats["recoveries"]}</td><td style="font-weight:600">{total}</td></tr>\n'
+
+    # Timeline
     timeline_html = ""
     for e in sorted(events, key=lambda x: x["timestamp"], reverse=True)[:50]:
         t = e["type"]
         ts = e["timestamp"][:16].replace("T", " ")
         eid = e.get("id", "")
+        author = escape(e.get("author", e.get("data", {}).get("author", "")))
         icon = {"commit": "C", "deployment": "D", "incident": "!", "recovery": "R"}.get(t, "?")
         color = {"commit": "#6b7280", "deployment": "#3b82f6", "incident": "#ef4444", "recovery": "#10b981"}.get(t, "#6b7280")
         desc = ""
@@ -164,7 +215,27 @@ def generate_html(events, metrics):
             desc = f"{escape(data.get('description', ''))} [{escape(data.get('severity', ''))}]"
         elif t == "recovery":
             desc = f"Incident {escape(data.get('incident_id', ''))} - {format_duration(data.get('mttr_minutes', 0))}"
-        timeline_html += f'<div class="evt"><span class="badge" style="background:{color}">{icon}</span><span class="ts">{ts}</span><span class="id">{eid}</span><span class="desc">{desc}</span></div>\n'
+        author_badge = f'<span class="author-tag">{author}</span>' if author else ""
+        timeline_html += f'<div class="evt"><span class="badge" style="background:{color}">{icon}</span><span class="ts">{ts}</span>{author_badge}<span class="id">{eid}</span><span class="desc">{desc}</span></div>\n'
+
+    # Team section HTML
+    team_section = ""
+    if team_stats and len(team_stats) > 0:
+        team_section = f"""
+<div class="team-container">
+  <h2>Team Contributions (last 30 days)</h2>
+  <table class="team-table">
+    <thead>
+      <tr><th>Author</th><th>Commits</th><th>Deploys</th><th>Incidents</th><th>Recoveries</th><th>Total</th></tr>
+    </thead>
+    <tbody>
+      {team_html}
+    </tbody>
+  </table>
+</div>
+"""
+
+    num_contributors = len(team_stats) if team_stats else 0
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -189,7 +260,7 @@ def generate_html(events, metrics):
   .bar {{ width: 100%; background: #3b82f6; border-radius: 4px 4px 0 0; min-height: 2px; transition: height 0.3s; }}
   .bar-label {{ font-size: 0.65rem; color: #94a3b8; margin-top: 4px; writing-mode: vertical-rl; text-orientation: mixed; height: 40px; }}
   .bar-val {{ font-size: 0.7rem; color: #cbd5e1; margin-bottom: 2px; }}
-  .timeline {{ background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }}
+  .timeline {{ background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; margin-bottom: 2rem; }}
   .timeline h2 {{ font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; }}
   .evt {{ display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid #334155; font-size: 0.85rem; }}
   .evt:last-child {{ border-bottom: none; }}
@@ -197,12 +268,19 @@ def generate_html(events, metrics):
   .ts {{ color: #64748b; font-size: 0.75rem; min-width: 120px; }}
   .id {{ color: #94a3b8; font-size: 0.75rem; min-width: 60px; }}
   .desc {{ color: #cbd5e1; }}
+  .author-tag {{ background: #334155; color: #94a3b8; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 4px; min-width: 60px; text-align: center; }}
+  .team-container {{ background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; margin-bottom: 2rem; }}
+  .team-container h2 {{ font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; }}
+  .team-table {{ width: 100%; border-collapse: collapse; }}
+  .team-table th {{ text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; }}
+  .team-table td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; font-size: 0.85rem; }}
+  .team-table tr:hover {{ background: #334155; }}
   footer {{ text-align: center; color: #475569; margin-top: 2rem; font-size: 0.8rem; }}
 </style>
 </head>
 <body>
 <h1>DORA Metrics Dashboard</h1>
-<p class="subtitle">Last 30 days &mdash; Generated {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
+<p class="subtitle">Last 30 days &mdash; {num_contributors} contributor{"s" if num_contributors != 1 else ""} &mdash; Generated {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
 
 <div class="grid">
   <div class="card">
@@ -231,6 +309,8 @@ def generate_html(events, metrics):
   </div>
 </div>
 
+{team_section}
+
 <div class="chart-container">
   <h2>Weekly Deployments (last 12 weeks)</h2>
   <div class="bar-chart" id="barChart"></div>
@@ -241,7 +321,7 @@ def generate_html(events, metrics):
   {timeline_html if timeline_html else '<div style="color:#64748b;padding:1rem">No events recorded yet.</div>'}
 </div>
 
-<footer>DORA Metrics Dashboard &mdash; DoraSkills</footer>
+<footer>DORA Metrics Dashboard &mdash; DoraSkills (Team Mode)</footer>
 
 <script>
 const labels = {week_labels};
@@ -269,9 +349,10 @@ labels.forEach((label, i) => {{
 </body>
 </html>"""
 
+
 def main():
     if len(sys.argv) < 3:
-        print("Usage: generate-dashboard.py <events.json> <output.html>")
+        print("Usage: generate-dashboard.py <events.json|events-dir/> <output.html>")
         sys.exit(1)
 
     events_path = sys.argv[1]
@@ -279,12 +360,14 @@ def main():
 
     events = load_events(events_path)
     metrics = calc_metrics(events)
-    html = generate_html(events, metrics)
+    team_stats = calc_team_stats(events)
+    html = generate_html(events, metrics, team_stats)
 
     with open(output_path, "w") as f:
         f.write(html)
 
     print(f"Dashboard generated: {output_path}")
+
 
 if __name__ == "__main__":
     main()

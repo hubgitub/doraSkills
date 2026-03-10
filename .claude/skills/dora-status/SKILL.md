@@ -1,12 +1,14 @@
 # /dora-status
 
-Displays a summary of the 4 DORA metrics calculated from tracked events.
+Displays a summary of the 4 DORA metrics calculated from all team members' tracked events.
 
 ## Instructions
 
 When the user runs `/dora-status`:
 
-1. Read the file `data/dora-events.json` from the project root.
+1. Load events from **all files** in `data/events/*.json` and merge them into a single list sorted by timestamp. Each file represents one team member's events.
+
+   If `data/events/` does not exist but `data/dora-events.json` does (legacy mode), fall back to reading that file instead.
 
 2. Calculate the 4 DORA metrics over the last 30 days:
 
@@ -20,7 +22,7 @@ When the user runs `/dora-status`:
   - **Low**: Less than monthly (avg < 1/30 per day)
 
 ### Lead Time for Changes
-- For each deployment, find its linked commits via `commit_ids`
+- For each deployment, find its linked commits via `commit_ids` (searching across all team members' events)
 - Calculate the time between the earliest linked commit and the deployment timestamp
 - Take the **median** of all lead times
 - Classification:
@@ -52,7 +54,7 @@ When the user runs `/dora-status`:
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║                    DORA Metrics Summary                         ║
-║                    Last 30 days                                 ║
+║                    Last 30 days (Team)                          ║
 ╠══════════════════════════════╦═══════════════╦═══════════════════╣
 ║ Metric                       ║ Value         ║ Classification    ║
 ╠══════════════════════════════╬═══════════════╬═══════════════════╣
@@ -66,4 +68,13 @@ When the user runs `/dora-status`:
 4. Also show a brief summary:
    - Total events tracked
    - Number of commits, deployments, incidents, recoveries
+   - Number of active contributors (unique authors)
    - Any open (unresolved) incidents
+
+5. Show a per-contributor breakdown:
+```
+Contributors (last 30 days):
+  Alice   - 12 commits, 3 deploys
+  Bob     - 8 commits, 2 deploys, 1 incident
+  Charlie - 5 commits, 1 deploy, 1 recovery
+```

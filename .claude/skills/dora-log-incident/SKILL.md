@@ -1,6 +1,6 @@
 # /dora-log-incident
 
-Logs an incident event linked to the most recent deployment.
+Logs an incident event linked to the most recent deployment (attributed to the current user).
 
 ## Arguments
 
@@ -16,23 +16,31 @@ Severity levels: `critical`, `major`, `minor` (default: `major`)
 
 When the user runs `/dora-log-incident`:
 
-1. Read `data/dora-events.json` from the project root.
+1. Determine the current user:
+   - Try `git config user.name` first
+   - Fall back to `whoami`
+   - Sanitize the username for use as a filename
 
-2. Parse `$ARGUMENTS`:
+2. Load the user's event file from `data/events/{sanitized_username}.json`. Create it with `{"events": []}` if it doesn't exist.
+
+3. Also load **all** event files from `data/events/*.json` to find the most recent deployment across the whole team.
+
+4. Parse `$ARGUMENTS`:
    - Split on ` - ` to separate description from severity
    - If no severity provided, default to `major`
    - If no arguments provided, ask the user for a description.
 
-3. Find the most recent `deployment` event to link this incident to. If no deployments exist, still log the incident but with `deployment_id: null`.
+5. Find the most recent `deployment` event across all team files to link this incident to. If no deployments exist, still log the incident but with `deployment_id: null`.
 
-4. Generate a new event ID in the format `evt_XXX`.
+6. Generate a new event ID in the format `evt_{username}_{YYYYMMDDHHMMSS}_{4random}`.
 
-5. Create a new incident event:
+7. Create a new incident event:
 ```json
 {
-  "id": "evt_XXX",
+  "id": "evt_alice_20260305120000_m3p9",
   "type": "incident",
   "timestamp": "<current ISO timestamp>",
+  "author": "<git user name>",
   "data": {
     "description": "<parsed description>",
     "severity": "<parsed severity>",
@@ -42,16 +50,17 @@ When the user runs `/dora-log-incident`:
 }
 ```
 
-6. Append the event and write back to `data/dora-events.json`.
+8. Append the event to the **user's** event file and write back.
 
-7. Display a confirmation:
+9. Display a confirmation:
 ```
 Incident logged:
-  ID:          evt_XXX
+  ID:          evt_alice_20260305120000_m3p9
+  Author:      Alice
   Description: API down
   Severity:    critical
-  Linked to:   evt_002 (production v2.1.0)
+  Linked to:   evt_bob_20260305110000_x7k2 (production v2.1.0)
   Timestamp:   2026-03-05T12:00:00Z
 
-To log recovery, run: /dora-log-recovery evt_XXX
+To log recovery, run: /dora-log-recovery evt_alice_20260305120000_m3p9
 ```

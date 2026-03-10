@@ -1,12 +1,17 @@
 # /dora-dashboard
 
-Generates an interactive HTML dashboard displaying DORA metrics.
+Generates an interactive HTML dashboard displaying DORA metrics for the whole team.
 
 ## Instructions
 
 When the user runs `/dora-dashboard`:
 
-1. Run the Python script to generate the dashboard:
+1. Run the Python script to generate the dashboard, passing the **events directory** (not a single file):
+```bash
+python3 "$CLAUDE_PROJECT_DIR/.claude/skills/dora-dashboard/scripts/generate-dashboard.py" "$CLAUDE_PROJECT_DIR/data/events" "$CLAUDE_PROJECT_DIR/data/dora-dashboard.html"
+```
+
+   If `data/events/` does not exist but `data/dora-events.json` does (legacy mode), use the legacy file path instead:
 ```bash
 python3 "$CLAUDE_PROJECT_DIR/.claude/skills/dora-dashboard/scripts/generate-dashboard.py" "$CLAUDE_PROJECT_DIR/data/dora-events.json" "$CLAUDE_PROJECT_DIR/data/dora-dashboard.html"
 ```
@@ -21,4 +26,4 @@ Dashboard generated: data/dora-dashboard.html
 open data/dora-dashboard.html
 ```
 
-4. If there are no events in the data file, still generate the dashboard but note that it will show empty/zero metrics.
+4. If there are no events in the data files, still generate the dashboard but note that it will show empty/zero metrics.

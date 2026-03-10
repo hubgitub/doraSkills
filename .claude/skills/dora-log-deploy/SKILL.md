@@ -1,6 +1,6 @@
 # /dora-log-deploy
 
-Manually logs a deployment event.
+Manually logs a deployment event (attributed to the current user).
 
 ## Arguments
 
@@ -14,40 +14,49 @@ Examples:
 
 When the user runs `/dora-log-deploy`:
 
-1. Read `data/dora-events.json` from the project root.
+1. Determine the current user:
+   - Try `git config user.name` first
+   - Fall back to `whoami`
+   - Sanitize the username for use as a filename (replace spaces and special chars with underscores)
 
-2. Parse `$ARGUMENTS`:
+2. Load the user's event file from `data/events/{sanitized_username}.json`. Create it with `{"events": []}` if it doesn't exist.
+
+3. Also load **all** event files from `data/events/*.json` to find undeployed commits across the whole team.
+
+4. Parse `$ARGUMENTS`:
    - First word = environment (default: "production")
    - Second word = version (default: "manual")
    - If no arguments provided, ask the user for at least the environment.
 
-3. Find all `commit` events that are not yet linked to any `deployment` event (by checking `commit_ids` across all existing deployments).
+5. Find all `commit` events (across all team files) that are not yet linked to any `deployment` event (by checking `commit_ids` across all existing deployments in all files).
 
-4. Generate a new event ID in the format `evt_XXX` (incrementing from the last event).
+6. Generate a new event ID in the format `evt_{username}_{YYYYMMDDHHMMSS}_{4random}`.
 
-5. Create a new deployment event:
+7. Create a new deployment event:
 ```json
 {
-  "id": "evt_XXX",
+  "id": "evt_alice_20260305110000_x7k2",
   "type": "deployment",
   "timestamp": "<current ISO timestamp>",
+  "author": "<git user name>",
   "data": {
     "environment": "<parsed environment>",
     "version": "<parsed version>",
-    "commit_ids": ["<list of undeployed commit hashes>"],
+    "commit_ids": ["<list of undeployed commit hashes from all team members>"],
     "method": "manual"
   }
 }
 ```
 
-6. Append the event to the events array and write back to `data/dora-events.json`.
+8. Append the event to the **user's** event file and write back.
 
-7. Display a confirmation:
+9. Display a confirmation:
 ```
 Deployment logged:
-  ID:          evt_XXX
+  ID:          evt_alice_20260305110000_x7k2
+  Author:      Alice
   Environment: production
   Version:     v2.1.0
-  Commits:     3 commits linked
+  Commits:     3 commits linked (from 2 contributors)
   Timestamp:   2026-03-05T11:00:00Z
 ```
